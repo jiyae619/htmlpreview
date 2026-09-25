@@ -1,0 +1,13 @@
+[
+ {"id":"q",      "text":"Do you find yourself procrastinating with phone when you have to focus?"},
+ {"id":"built",  "text":"I built FocusDock to help fix that."},
+ {"id":"smart",  "text":"It's a smart box that tracks your phone-down time."},
+ {"id":"parts",  "text":"Here we've got an LCD display and two LEDs for clear visual cues, and a push button on the side to control the mode."},
+ {"id":"hole",   "text":"At the top, there's a hole where it detects the phone."},
+ {"id":"ldr",    "text":"Inside the hole, there is a photoresistor, which senses light."},
+ {"id":"button", "text":"I just hit this button to toggle the session on."},
+ {"id":"place",  "text":"When I try to focus and place the phone on the dock, the LED turns to green and the timer counts out my focus time."},
+ {"id":"warn",   "text":"During focus mode, it warns me with red light that I'm using phone."},
+ {"id":"acct",   "text":"FocusDock will keep you accountable during focus sessions."},
+ {"id":"go",     "text":"Now, let's focus."}
+]
