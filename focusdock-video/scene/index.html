@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FocusDock scenes</title>
+<style>
+  @font-face { font-family: 'SG'; src: url(node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2); font-weight: 700; }
+  @font-face { font-family: 'SG'; src: url(node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2); font-weight: 500; }
+  @font-face { font-family: 'Inter'; src: url(node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2); font-weight: 400; }
+  @font-face { font-family: 'Inter'; src: url(node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2); font-weight: 500; }
+  @font-face { font-family: 'Inter'; src: url(node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2); font-weight: 600; }
+  @font-face { font-family: 'Mono'; src: url(node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2); font-weight: 500; }
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+  #stage { position: relative; overflow: hidden; }
+  #stage canvas { position: absolute; left: 0; top: 0; }
+  .layer { position: absolute; inset: 0; pointer-events: none; }
+  /* scale everything in the overlay by --u (1 at 1080p) */
+  .notif {
+    position: absolute; left: 0; top: 0; transform-origin: 50% 100%;
+    width: calc(360px * var(--u)); padding: calc(14px * var(--u)) calc(16px * var(--u));
+    border-radius: calc(20px * var(--u));
+    background: rgba(250, 250, 252, 0.86);
+    box-shadow: 0 calc(14px * var(--u)) calc(40px * var(--u)) rgba(0,0,0,0.35);
+    backdrop-filter: blur(8px);
+    display: flex; gap: calc(12px * var(--u)); align-items: center;
+    font-family: Inter; color: #111;
+  }
+  .notif .ic { flex: none; width: calc(44px * var(--u)); height: calc(44px * var(--u)); border-radius: calc(11px * var(--u));
+    display: grid; place-items: center; }
+  .notif .ic svg { width: 58%; height: 58%; }
+  .notif .tx { flex: 1; min-width: 0; }
+  .notif .app { font-size: calc(15px * var(--u)); font-weight: 600; letter-spacing: 0.01em; opacity: .55; text-transform: uppercase; }
+  .notif .msg { font-size: calc(21px * var(--u)); font-weight: 500; margin-top: calc(2px * var(--u)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .notif .when { font-size: calc(15px * var(--u)); opacity: .45; align-self: flex-start; }
+
+  .badge { position: absolute; left: 0; top: 0; min-width: calc(34px*var(--u)); height: calc(34px*var(--u)); border-radius: 999px;
+    background: #ff3b30; color: #fff; font: 600 calc(19px*var(--u))/calc(34px*var(--u)) Inter; text-align: center; padding: 0 calc(8px*var(--u));
+    box-shadow: 0 calc(6px*var(--u)) calc(18px*var(--u)) rgba(255,59,48,.45); }
+
+  #title { position: absolute; left: 0; right: 0; text-align: center; color: #fff; }
+  #title .name { font-family: SG; font-weight: 700; font-size: calc(132px * var(--u)); letter-spacing: -0.02em; line-height: 1; }
+  #title .name span { display: inline-block; }
+  #title .name .dock { color: #6ef2a4; }
+  #title .tag { font-family: Inter; font-weight: 500; font-size: calc(38px * var(--u)); margin-top: calc(22px * var(--u)); color: rgba(255,255,255,.92); }
+  #title .credit { font-family: Inter; font-weight: 400; font-size: calc(24px * var(--u)); margin-top: calc(26px * var(--u)); color: rgba(255,255,255,.6); letter-spacing: .06em; }
+
+  .label { position: absolute; left: 0; top: 0; font-family: Inter; color: #fff; white-space: nowrap; }
+  .label .t { font-weight: 600; font-size: calc(26px*var(--u)); }
+  .label .s { font-weight: 400; font-size: calc(19px*var(--u)); opacity: .7; margin-top: calc(2px*var(--u)); }
+  .label .chip { display: inline-block; padding: calc(10px*var(--u)) calc(16px*var(--u)); border-radius: calc(14px*var(--u));
+     background: rgba(10,16,24,.62); border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(6px); }
+  #lines { position: absolute; inset: 0; }
+
+  .state { position: absolute; font-family: SG; font-weight: 700; color: #fff; font-size: calc(46px*var(--u)); letter-spacing: .04em; }
+  .state small { display:block; font-family: Inter; font-weight: 500; font-size: calc(22px*var(--u)); letter-spacing: .02em; opacity: .75; margin-top: calc(4px*var(--u)); }
+
+
+  .notif { transform-origin: 50% 50%; }
+  .card { position: absolute; left: 0; top: 0; box-sizing: border-box; background: #fbfaf7; padding: calc(12px*var(--u));
+    border-radius: calc(6px*var(--u)); box-shadow: 0 calc(24px*var(--u)) calc(60px*var(--u)) rgba(0,0,0,.45), 0 calc(4px*var(--u)) calc(12px*var(--u)) rgba(0,0,0,.25); transform-origin: 50% 50%; }
+  .card img { display: block; width: 100%; height: auto; }
+  .card .cap { font: 500 calc(21px*var(--u))/1.25 Inter; color: #1d1f24; padding: calc(12px*var(--u)) calc(4px*var(--u)) calc(4px*var(--u)); white-space: nowrap; }
+  .callout { position: absolute; left: 0; top: 0; padding: calc(10px*var(--u)) calc(20px*var(--u)); border-radius: 999px; background: rgba(10,16,24,.72);
+    color: #fff; font: 600 calc(24px*var(--u)) Inter; border: 1px solid rgba(255,255,255,.25); white-space: nowrap; opacity: 0; }
+  .callout .dot { display: inline-block; width: calc(11px*var(--u)); height: calc(11px*var(--u)); border-radius: 50%; background: #ffb84d; margin-right: calc(10px*var(--u)); vertical-align: middle; }
+  .pulse { position: absolute; left: 0; top: 0; width: calc(90px*var(--u)); height: calc(90px*var(--u)); border: calc(3px*var(--u)) solid #ffb84d; border-radius: 50%; opacity: 0; }
+  .chip-top { position: absolute; left: calc(64px*var(--u)); top: calc(54px*var(--u)); padding: calc(11px*var(--u)) calc(22px*var(--u)); border-radius: 999px;
+    background: rgba(0,0,0,.5); color: #fff; font: 600 calc(24px*var(--u)) Inter; border: 1px solid rgba(255,255,255,.22); }
+  .chip-top .rec { display: inline-block; width: calc(12px*var(--u)); height: calc(12px*var(--u)); border-radius: 50%; background: #ff3b30; margin-right: calc(12px*var(--u)); vertical-align: middle; box-shadow: 0 0 calc(10px*var(--u)) #ff3b30; }
+  #endcard { position: absolute; left: calc(150px*var(--u)); top: calc(300px*var(--u)); color: #fff; opacity: 0; }
+  #endcard .ty { font: 700 calc(118px*var(--u))/1 SG; letter-spacing: -0.02em; display: flex; align-items: center; gap: calc(26px*var(--u)); }
+  #endcard .smile { width: calc(96px*var(--u)); height: calc(96px*var(--u)); }
+  #endcard .who { font: 500 calc(42px*var(--u)) Inter; color: rgba(255,255,255,.88); margin-top: calc(22px*var(--u)); }
+  #endcard .rule { width: calc(96px*var(--u)); height: calc(4px*var(--u)); background: #6ef2a4; border-radius: 2px; margin: calc(40px*var(--u)) 0 calc(30px*var(--u)); }
+  #endcard .brand { font: 400 calc(29px*var(--u)) Inter; color: rgba(255,255,255,.8); }
+  #endcard .brand b { font-family: SG; font-weight: 700; color: #fff; }
+  #endcard .brand b span { color: #6ef2a4; }
+  #endcard .course { font: 400 calc(23px*var(--u)) Inter; color: rgba(255,255,255,.5); margin-top: calc(12px*var(--u)); letter-spacing: .05em; }
+  #fade { position: absolute; inset: 0; background: #000; opacity: 0; }
+  #vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 55%, rgba(0,0,0,.45) 100%); }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "./node_modules/three/build/three.module.js",
+  "three/addons/": "./node_modules/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="stage">
+  <div class="layer" id="vignette"></div>
+  <div class="layer" id="ui">
+    <svg id="lines"></svg>
+  </div>
+  <div class="layer" id="fade"></div>
+</div>
+<script type="module" src="./scene.js"></script>
+</body>
+</html>
