@@ -103,6 +103,7 @@ film = {'fps': FPS, 'bpm': BPM, 'total': TOTAL, 'frames': round(TOTAL * FPS), 's
         'events': {'slam': 9.6, 'land': 13.2, 'press3d': 22.1, 'beam': 28.85, 'cover': 29.4, 'press_real': 30.92,
                    'focus_on_real': 32.0, 'green_real': 35.8, 'red_real': 42.48, 'hit_cold': 0.62}}
 film['endLcdRect'] = {'x': 91.5, 'y': 306.0, 'w': 1762.5, 'h': 429.0}   # blue LCD area in the last outro frame (measured)
+film['endLcdRectV'] = {'x': 90.0, 'y': 843.0, 'w': 912.0, 'h': 235.5}   # same, vertical cut (measure_lcd.py)
 json.dump(film, open(f'{HERE}/film.json', 'w'), indent=1)
 for c in captions:
     print(c['vo'], c['mode'], ' | '.join(f"{p['t0']:.2f}-{p['t1']:.2f} " + ' / '.join(' '.join(t['w'] for t in l) for l in p['lines']) for p in c['pages']))

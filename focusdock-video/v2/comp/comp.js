@@ -275,13 +275,26 @@ function drawBuiltCaption(page, i, t, lf, sh) {
 }
 
 // "ACCOUNTABLE": the focus light writes the word onto the lid face and it rides the box as the camera pushes in
+// vertical: the push-in carries the lid past the frame edges, so the word leaves before it would clip
+let projOut = null;
+function projectedOut(page, sh) {
+  if (projOut !== null) return projOut;
+  projOut = 48.55;
+  if (!VERT) return projOut;
+  for (let lf = Math.floor((page.t0 - sh.start) * FPS) + 1; lf <= anchors[sh.shot].length; lf++) {
+    const c = A(sh.shot, lf, 'lid_face'), cx = A(sh.shot, lf, 'lid_face_x');
+    const half = 0.1075 * Math.hypot(cx.x - c.x, cx.y - c.y) / 0.1;   // half of the 21.5 cm word
+    if (c.x - half < 0.04 * W || c.x + half > 0.96 * W) { projOut = Math.min(projOut, sh.start + (lf - 1) / FPS); break; }
+  }
+  return projOut;
+}
 function drawProjected(g, page, t, sh, lf) {
   const c = A(sh.shot, lf, 'lid_face'), cx = A(sh.shot, lf, 'lid_face_x');
   if (!c || !cx) return;
   const pxPerM = Math.hypot(cx.x - c.x, cx.y - c.y) / 0.1, ang = Math.atan2(cx.y - c.y, cx.x - c.x);
   const p = (0.215 / 65) * pxPerM;        // the word spans 21.5 cm of the 26 cm lid
   tx.setTransform(Math.cos(ang), Math.sin(ang), -Math.sin(ang), Math.cos(ang), c.x, c.y);
-  dotText(tx, page, t, { p, align: 'center', valign: 'middle', sweep: 0.03, tOut: 48.55, color: '#34ff85', rDot: 0.44 });
+  dotText(tx, page, t, { p, align: 'center', valign: 'middle', sweep: 0.03, tOut: projectedOut(page, sh), color: '#34ff85', rDot: 0.44 });
   tx.setTransform(1, 0, 0, 1, 0, 0);
   g.save(); g.globalCompositeOperation = 'screen'; g.globalAlpha = 0.5; g.filter = `blur(${Math.max(4, p * 0.6)}px)`; g.drawImage(txC, 0, 0); g.restore();
   g.save(); g.globalCompositeOperation = 'screen'; g.drawImage(txC, 0, 0); g.restore();
@@ -305,14 +318,9 @@ function drawGiant(page, grp, i, t, sh) {
 const LCDP = 7, LCD_PAD = 3;
 // strip corner per shot, chosen to stay clear of the parts each shot is about
 const STRIP_AT = { N: 'bl', N3: 'tl', M1: 'bl', M2: 'br', M3: 'bl', M5: 'bl', M6: 'bl', O1: 'bl' };
-const STRIP_V = { N: 't', N3: 't', M6: 't' };      // vertical: top or bottom, always centred
 function lcdPanelRect(sh) {
   const w = (16 * 6 - 1 + 2 * LCD_PAD) * LCDP + 28, h = (2 * 9 - 1 + 2 * LCD_PAD) * LCDP + 28;
-  if (VERT) {
-    const x = (W - w) / 2;
-    if (sh.kind === 'real') return { x, y: 262, w, h };
-    return { x, y: STRIP_V[sh.id] === 't' ? 262 : H - 330 - h, w, h };
-  }
+  if (VERT) return { x: (W - w) / 2, y: 262, w, h };   // one fixed spot, clear of the app's bottom UI
   const at = sh.kind === 'real' ? 'tl_chip' : (STRIP_AT[sh.id] || 'bl');
   if (at === 'tl_chip') return { x: 64, y: 64 + 54, w, h };
   const x = at.endsWith('r') ? W - 64 - w : 64;
