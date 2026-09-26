@@ -12,12 +12,12 @@ const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromi
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 page.on('pageerror', (e) => console.error('[pageerror]', e.message));
 page.on('console', (m) => { if (m.type() === 'error') console.error('[console]', m.text()); });
-await page.goto(`http://localhost:${server.address().port}/v2/comp/index.html`);
+await page.goto(`http://localhost:${server.address().port}/v2/comp/index.html${args.v ? '?v=1' : ''}`);
 await page.waitForFunction(() => window.READY === true, null, { timeout: 120000 });
 const film = JSON.parse(fs.readFileSync(path.join(ROOT, 'v2/film.json')));
 const grab = async () => Buffer.from((await page.evaluate(() => document.getElementById('c').toDataURL('image/png'))).split(',')[1], 'base64');
 if (args.stills) {
-  const dir = args.dir || path.join(ROOT, 'v2/comp/stills'); fs.mkdirSync(dir, { recursive: true });
+  const dir = args.dir || path.join(ROOT, args.v ? 'v2/comp/stills_v' : 'v2/comp/stills'); fs.mkdirSync(dir, { recursive: true });
   for (const s of args.stills.split(',')) { const f = Math.round(parseFloat(s) * 30); await page.evaluate((f) => window.renderFrame(f), f); fs.writeFileSync(path.join(dir, `f_${String(f).padStart(4, '0')}.png`), await grab()); }
 } else {
   const a = +(args.from ?? 0), b = +(args.to ?? film.frames);

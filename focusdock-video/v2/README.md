@@ -51,3 +51,14 @@ The film cuts between two states of the same desk:
 | Compositing | `comp/` (canvas, headless Chromium): plates, dot-matrix type, mattes, transitions, grade and grain |
 | Sound | `audio_v2.py`: procedural score and foley, voice ducking, loudness normalisation |
 | Assembly | `assemble_v2.sh` |
+
+## Vertical cut (9:16, for Twitter/X mobile)
+
+**Output:** `FocusDock_v2_vertical.mp4` (1080×1920, 30 fps, same voice, score and timing as the 16:9 film)
+
+It is re-framed, not cropped:
+- **3D:** every shot is re-rendered with a portrait camera (`blender/shots_v.py`, `blender/anchors_v.py`, `blender/queue_v.sh`), so the product fills the tall frame at full resolution.
+- **Real footage:** shown 1:1 at native resolution in a square window over a blurred fill of the same clip. Under the window, a dot-matrix status line mirrors the device (`FOCUS OFF` → `PHONE AWAY` → `PHONE ON` → `PHONE AWAY`).
+- **Type:** captions re-flow for the narrow frame. Long words stack (`PHONE-` / `DOWN` / `TIME`), and the LCD strip sits in the top third, clear of the product and of the app's bottom UI.
+
+Build it with `VERT=1 ./assemble_v2.sh`: this composites with `comp/render.mjs --v 1`, then muxes the result with `soundtrack.wav`.

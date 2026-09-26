@@ -1,6 +1,9 @@
 // FocusDock v2 compositor: plates (Blender renders / real footage) + dot-matrix typography + transitions + grade.
 // Deterministic: window.renderFrame(i) draws output frame i (30 fps) onto #c.
-const W = 1920, H = 1080, FPS = 30;
+const QS = new URLSearchParams(location.search);
+const VERT = QS.get('v') === '1';                 // 9:16 version for mobile
+const W = VERT ? 1080 : 1920, H = VERT ? 1920 : 1080, FPS = 30;
+const RENDERS = VERT ? 'renders_v' : 'renders';
 const ROOT = '/v2/';
 const FILM = await (await fetch(ROOT + 'film.json')).json();
 const cv = document.getElementById('c'); cv.width = W; cv.height = H;
@@ -32,7 +35,7 @@ async function img(src) {
 const pad4 = (n) => String(n).padStart(4, '0');
 const anchors = {};
 for (const s of FILM.shots) if (s.kind === '3d') {
-  try { anchors[s.shot] = (await (await fetch(`${ROOT}blender/renders/${s.shot}/anchors.json`)).json()).frames; } catch (e) { }
+  try { anchors[s.shot] = (await (await fetch(`${ROOT}blender/${RENDERS}/${s.shot}/anchors.json`)).json()).frames; } catch (e) { }
 }
 const A = (shot, lf, key) => { const f = anchors[shot]?.[Math.min(anchors[shot].length, Math.max(1, lf)) - 1]; return f && f[key] ? { x: f[key][0] * W, y: f[key][1] * H } : null; };
 
@@ -106,7 +109,7 @@ function dotText(g, page, t, o) {
 function shotAt(t) { return FILM.shots.find((s) => t >= s.start - 1e-6 && t < s.end - 1e-6) || FILM.shots[FILM.shots.length - 1]; }
 async function drawPlate(g, s, lt, lf) {
   if (s.kind === '3d') {
-    const im = await img(`${ROOT}blender/renders/${s.shot}/rgb/${pad4(lf)}.png`);
+    const im = await img(`${ROOT}blender/${RENDERS}/${s.shot}/rgb/${pad4(lf)}.png`);
     if (im) { g.imageSmoothingQuality = 'high'; g.filter = 'saturate(1.1) contrast(1.03)'; g.drawImage(im, 0, 0, W, H); g.filter = 'none'; }
     else { g.fillStyle = '#222'; g.fillRect(0, 0, W, H); g.fillStyle = '#f0f'; g.font = '40px monospace'; g.fillText(`${s.shot} ${lf}`, 60, 80); }
     return;
@@ -117,6 +120,7 @@ async function drawPlate(g, s, lt, lf) {
     if (s.timelapse) src = Math.round(lerp(s.src[0], s.src[1], (lf - 1) / (n - 1)));
     else src = Math.min(s.src[1], s.src[0] + lf - 1);
     const im = await img(`${ROOT}real/${pad4(src)}.jpg`);
+    if (VERT) { drawRealVertical(g, s, lt, im); return; }
     let zoom = 1.045, cx = W / 2, cy = H / 2;
     if (s.timelapse) { const k = inout(seg(lt, 0.1, s.end - s.start - 0.2)); zoom = lerp(1.06, 2.05, k); cx = lerp(W / 2, 1310, k); cy = lerp(H / 2, 648, k); }
     g.save(); g.filter = 'contrast(1.08) saturate(0.9) brightness(0.97)';
@@ -127,9 +131,44 @@ async function drawPlate(g, s, lt, lf) {
     g.save(); g.globalCompositeOperation = 'soft-light'; g.globalAlpha = 0.12; g.fillStyle = C.bone; g.fillRect(0, 0, W, H); g.restore();
   }
 }
+// vertical: blurred cover fill + a sharp 1080x1080 window cut from the source around the action
+const WIN = { x: 0, y: 480, s: 1080 };
+function drawRealVertical(g, s, lt, im) {
+  if (!im) return;
+  const sc = H / 1080;
+  g.save(); g.filter = 'blur(30px) brightness(0.42) saturate(0.85)'; g.drawImage(im, (W - 1920 * sc) / 2 - 120, 0, 1920 * sc, H); g.restore();
+  let cx = 1100, cy = 540, zoom = 1.0;
+  if (s.timelapse) { const k = inout(seg(lt, 0.1, s.end - s.start - 0.2)); zoom = lerp(1.0, 1.9, k); cx = lerp(1100, 1310, k); cy = lerp(540, 648, k); }
+  const half = 540 / zoom;
+  const sx = Math.max(0, Math.min(1920 - 2 * half, cx - half)), sy = Math.max(0, Math.min(1080 - 2 * half, cy - half));
+  g.save(); g.filter = 'contrast(1.08) saturate(0.9) brightness(0.97)';
+  g.shadowColor = 'rgba(0,0,0,0.5)'; g.shadowBlur = 40;
+  g.drawImage(im, sx, sy, 2 * half, 2 * half, WIN.x, WIN.y, WIN.s, WIN.s); g.restore();
+  g.save(); g.globalCompositeOperation = 'soft-light'; g.globalAlpha = 0.12; g.fillStyle = C.bone; g.fillRect(WIN.x, WIN.y, WIN.s, WIN.s); g.restore();
+}
+// vertical: live status line under the footage window, mirroring the LED
+function drawRealStatus(g, t) {
+  const E = FILM.events;
+  let txt = 'FOCUS OFF', col = null;
+  if (t >= E.focus_on_real) { txt = 'PHONE AWAY'; col = C.red; }
+  if (t >= E.green_real) { txt = 'PHONE ON'; col = C.green; }
+  if (t >= E.red_real) { txt = 'PHONE AWAY'; col = C.red; }
+  const p = 9, y = WIN.y + WIN.s + 46;
+  const pg = { t0: 0, t1: 99, lines: [[{ w: txt, t: 0 }]] };
+  const tw = (txt.length * 6 - 1) * p, x0 = (W - tw) / 2 + (col ? 34 : 0);
+  if (col) {
+    const lx = x0 - 52, ly = y + 3.5 * p;
+    const rg = g.createRadialGradient(lx, ly, 0, lx, ly, 46); rg.addColorStop(0, col); rg.addColorStop(1, 'rgba(0,0,0,0)');
+    g.save(); g.globalAlpha = 0.55; g.fillStyle = rg; g.fillRect(lx - 50, ly - 50, 100, 100); g.restore();
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(lx, ly, 10, 0, 7); g.fill();
+  }
+  g.save(); g.translate(x0, y);
+  dotText(g, pg, 10, { p, color: C.bone, rDot: 0.44, noOut: true, popDur: 0.001, sweep: 0 });
+  g.restore();
+}
 async function drawForeground(g, s, lf) {
   // redraw the plate masked by the object matte so text sits behind the product
-  const [pl, mt] = await Promise.all([img(`${ROOT}blender/renders/${s.shot}/rgb/${pad4(lf)}.png`), img(`${ROOT}blender/renders/${s.shot}/matte/${pad4(lf)}.png`)]);
+  const [pl, mt] = await Promise.all([img(`${ROOT}blender/${RENDERS}/${s.shot}/rgb/${pad4(lf)}.png`), img(`${ROOT}blender/${RENDERS}/${s.shot}/matte/${pad4(lf)}.png`)]);
   if (!pl || !mt) return;
   fg.globalCompositeOperation = 'source-over'; fg.clearRect(0, 0, W, H); fg.filter = 'saturate(1.1) contrast(1.03)'; fg.drawImage(pl, 0, 0, W, H); fg.filter = 'none';
   fg.globalCompositeOperation = 'destination-in'; fg.drawImage(mt, 0, 0, W, H); fg.globalCompositeOperation = 'source-over';
@@ -146,6 +185,31 @@ function composeText(g, glow = 0.55, blur = 10) {
 
 // ------------------------------------------------------------------ caption modes
 const capGroups = FILM.captions;
+function reflow(page, maxCols) {
+  const lines = [];
+  for (const line of page.lines) {
+    let cur = [], len = 0;
+    for (const tok of line) {
+      if (tok.w.length > maxCols) {            // one long word: split it with a hyphen
+        if (cur.length) { lines.push(cur); cur = []; len = 0; }
+        const cut = Math.ceil(tok.w.length / 2);
+        lines.push([{ w: tok.w.slice(0, cut) + '-', t: tok.t }]); cur = [{ w: tok.w.slice(cut), t: tok.t + 0.22 }]; len = cur[0].w.length; continue;
+      }
+      const add = (cur.length ? 1 : 0) + tok.w.length;
+      if (len + add > maxCols && cur.length) { lines.push(cur); cur = [tok]; len = tok.w.length; } else { cur.push(tok); len += add; }
+    }
+    if (cur.length) lines.push(cur);
+  }
+  return { ...page, lines };
+}
+function splitHyphens(page) {   // PHONE-DOWN -> PHONE- / DOWN (stacked giant type)
+  const lines = [];
+  for (const line of page.lines) for (const tok of line) {
+    const parts = tok.w.split('-');
+    parts.forEach((pt, i) => lines.push([{ w: pt + (i < parts.length - 1 ? '-' : ''), t: tok.t + i * 0.22 }]));
+  }
+  return { ...page, lines };
+}
 function activePages(t) {
   const out = [];
   for (const grp of capGroups) grp.pages.forEach((pg, i) => { if (t >= pg.t0 - 0.02 && t < pg.t1 + 0.02) out.push({ grp, pg, i }); });
@@ -184,6 +248,14 @@ function floorText(page, t, lf, sh, sx, sy, pPx, opts = {}) {
 }
 function drawFloorCaption(page, i, t, lf, sh) {
   const noise = page.accent === 'noise';
+  if (VERT) {
+    const pg = reflow(page, noise ? 9 : 13);
+    const cols = Math.max(...pg.lines.map((l) => l.reduce((a, tk, j) => a + tk.w.length + (j ? 1 : 0), 0)));
+    const pPx = Math.min(noise ? 19 : 15, (0.82 * W) / (cols * 6));
+    floorText(pg, t, lf, sh, 0.5 * W, 0.66 * H, pPx, { lineGap: 3,
+      colorFn: noise ? (c, dx, dy, tt) => (hash(c.col * 31 + c.line * 97 + dx * 7 + dy * 13 + Math.floor(tt * 14)) > 0.45 ? NOTIF[Math.floor(hash(c.col + c.line * 17 + dx * 5 + dy * 3 + Math.floor(tt * 9)) * 6)] : C.bone) : null });
+    return;
+  }
   floorText(page, t, lf, sh, 0.5 * W, (page.lines.length > 1 ? 0.755 : 0.77) * H, noise ? 19.5 : 15, {
     lineGap: 3,
     colorFn: noise ? (c, dx, dy, tt) => (hash(c.col * 31 + dx * 7 + dy * 13 + Math.floor(tt * 14)) > 0.45 ? NOTIF[Math.floor(hash(c.col + dx * 5 + dy * 3 + Math.floor(tt * 9)) * 6)] : C.bone) : null,
@@ -191,6 +263,11 @@ function drawFloorCaption(page, i, t, lf, sh) {
 }
 function drawBuiltCaption(page, i, t, lf, sh) {
   const title = i === 1;
+  if (VERT) {
+    floorText(reflow(page, 13), t, lf, sh, 0.5 * W, 0.165 * H, title ? 17 : 13, { sweep: title ? 0.035 : 0.022, lineGap: 3,
+      colorFn: title ? (c) => (c.col >= 5 ? C.green : C.bone) : null });
+    return;
+  }
   floorText(page, t, lf, sh, 0.33 * W, (title ? 0.8 : 0.82) * H, title ? 21 : 14, {
     sweep: title ? 0.035 : 0.022, lineGap: 3,
     colorFn: title ? (c) => (c.col >= 5 ? C.green : C.bone) : null,
@@ -213,9 +290,10 @@ function drawProjected(g, page, t, sh, lf) {
 function drawGiant(page, grp, i, t, sh) {
   // huge type on the studio backdrop, behind the product
   const acc = grp.vo === 'acct';
-  const lines = page.lines.length;
-  const p = acc ? 25 : 21;
-  tx.setTransform(1, 0, 0, 1, W / 2, acc ? 0.2 * H : 0.05 * H);
+  if (VERT) page = splitHyphens(page);
+  const cols = Math.max(...page.lines.map((l) => l.reduce((a, tk, j) => a + tk.w.length + (j ? 1 : 0), 0)));
+  const p = VERT ? Math.min(28, (0.86 * W) / (cols * 6)) : (acc ? 25 : 21);
+  tx.setTransform(1, 0, 0, 1, W / 2, VERT ? 0.13 * H : (acc ? 0.2 * H : 0.05 * H));
   dotText(tx, page, t, {
     p, align: 'center', valign: 'top', lineGap: 3, sweep: 0.03, tOut: acc ? 48.5 : page.t1, noOut: false,
     color: page.accent === 'green' ? C.greenInk : '#1b1c20', rDot: 0.44,
@@ -227,8 +305,14 @@ function drawGiant(page, grp, i, t, sh) {
 const LCDP = 7, LCD_PAD = 3;
 // strip corner per shot, chosen to stay clear of the parts each shot is about
 const STRIP_AT = { N: 'bl', N3: 'tl', M1: 'bl', M2: 'br', M3: 'bl', M5: 'bl', M6: 'bl', O1: 'bl' };
+const STRIP_V = { N: 't', N3: 't', M6: 't' };      // vertical: top or bottom, always centred
 function lcdPanelRect(sh) {
   const w = (16 * 6 - 1 + 2 * LCD_PAD) * LCDP + 28, h = (2 * 9 - 1 + 2 * LCD_PAD) * LCDP + 28;
+  if (VERT) {
+    const x = (W - w) / 2;
+    if (sh.kind === 'real') return { x, y: 262, w, h };
+    return { x, y: STRIP_V[sh.id] === 't' ? 262 : H - 330 - h, w, h };
+  }
   const at = sh.kind === 'real' ? 'tl_chip' : (STRIP_AT[sh.id] || 'bl');
   if (at === 'tl_chip') return { x: 64, y: 64 + 54, w, h };
   const x = at.endsWith('r') ? W - 64 - w : 64;
@@ -289,9 +373,10 @@ function drawLabel(g, sh, lt) {
   g.save(); g.globalAlpha = k; g.font = '500 23px Mono'; g.letterSpacing = '3px';
   const label = real ? 'REAL PROTOTYPE' : txt;
   const w = g.measureText(label).width + (real ? 70 : 48);
-  g.fillStyle = 'rgba(8,8,10,0.58)'; g.beginPath(); g.roundRect(64, 60, w, 44, 22); g.fill();
-  if (real) { g.fillStyle = C.red; g.beginPath(); g.arc(90, 82, 7, 0, 7); g.fill(); }
-  g.fillStyle = C.bone; g.fillText(label, real ? 108 : 88, 90);
+  const ly = VERT ? 190 : 60;
+  g.fillStyle = 'rgba(8,8,10,0.58)'; g.beginPath(); g.roundRect(64, ly, w, 44, 22); g.fill();
+  if (real) { g.fillStyle = C.red; g.beginPath(); g.arc(90, ly + 22, 7, 0, 7); g.fill(); }
+  g.fillStyle = C.bone; g.fillText(label, real ? 108 : 88, ly + 30);
   g.restore();
 }
 
@@ -312,7 +397,7 @@ function drawLdrMeter(g, sh, lt) {
   const state = bright > 0.5 ? 'BRIGHT' : 'DARK';
   const pg = { t0: 0, t1: 99, lines: [[{ w: 'LDR', t: 0 }, { w: String(val).padStart(4, ' '), t: 0 }], [{ w: ('█'.repeat(Math.max(0, bars)) + ' '.repeat(9 - bars) + ' ' + state.padStart(6, ' ')), t: 0 }]] };
   const p = 5, w = (16 * 6 - 1 + 6) * p + 24, h = (17 + 6) * p + 24;
-  g.save(); g.globalAlpha = show; g.translate(W - 64 - w, 64);
+  g.save(); g.globalAlpha = show; g.translate(VERT ? (W - w) / 2 : W - 64 - w, VERT ? 478 : 64);
   g.fillStyle = '#0b0c0e'; g.beginPath(); g.roundRect(0, 0, w, h, 10); g.fill();
   g.fillStyle = bright > 0.5 ? '#1f55f0' : '#14307f'; g.beginPath(); g.roundRect(12, 12, w - 24, h - 24, 4); g.fill();
   g.translate(12 + 3 * p, 12 + 3 * p);
@@ -336,10 +421,10 @@ const END = { lcd: null };
 function endLcd(g, t, sh) {
   const lt = t - sh.start;
   // rect of the 3D LCD in the last O1 frame, grows to a clean centred panel, then shrinks away
-  const R0 = FILM.endLcdRect || { x: 0.035 * W, y: 0.27 * H, w: 0.93 * W, h: 0.42 * H };
-  const R1 = { x: 0.06 * W, y: 0.26 * H, w: 0.88 * W, h: 0.4 * H };
+  const R0 = (VERT ? FILM.endLcdRectV : FILM.endLcdRect) || { x: 0.035 * W, y: 0.27 * H, w: 0.93 * W, h: 0.42 * H };
+  const R1 = VERT ? { x: 0.05 * W, y: 0.4 * H, w: 0.9 * W, h: 0.9 * W * 0.26 } : { x: 0.06 * W, y: 0.26 * H, w: 0.88 * W, h: 0.4 * H };
   const shrink = inout(seg(t, 52.6, 53.4));
-  const R2 = { x: 0.25 * W, y: 0.34 * H, w: 0.5 * W, h: 0.228 * H };
+  const R2 = VERT ? { x: 0.16 * W, y: 0.42 * H, w: 0.68 * W, h: 0.68 * W * 0.26 } : { x: 0.25 * W, y: 0.34 * H, w: 0.5 * W, h: 0.228 * H };
   let R = lerpR(R0, R1, inout(seg(lt, 0.0, 0.5)));
   R = lerpR(R, R2, shrink);
   const power = 1 - seg(t, 54.25, 54.55);
@@ -367,7 +452,9 @@ function endLcd(g, t, sh) {
   // LED + credits
   const cr = outc(seg(t, 52.9, 53.5)) * (1 - seg(t, 54.6, 55.0));
   g.save(); g.globalAlpha = cr; g.fillStyle = C.bone; g.font = '500 26px Mono'; g.letterSpacing = '4px'; g.textAlign = 'center';
-  g.fillText('JIYAE CHOI — HCDE 539 · WINTER 2026', W / 2, R.y + R.h + 110); g.restore();
+  if (VERT) { g.font = '500 24px Mono'; g.fillText('JIYAE CHOI', W / 2, R.y + R.h + 110); g.fillText('HCDE 539 · WINTER 2026', W / 2, R.y + R.h + 152); }
+  else g.fillText('JIYAE CHOI — HCDE 539 · WINTER 2026', W / 2, R.y + R.h + 110);
+  g.restore();
   const led = seg(t, 52.9, 53.2) * (1 - seg(t, 54.9, 55.15));
   if (led > 0) {
     const lx = R.x - 0.06 * R.w, ly = R.y + R.h * 0.5;
@@ -389,7 +476,7 @@ function grade(g, fi) {
   g.save(); g.globalCompositeOperation = 'overlay'; g.globalAlpha = 0.06;
   const gc = grains[fi % grains.length]; const pat = g.createPattern(gc, 'repeat'); g.fillStyle = pat;
   g.translate((fi * 137) % 512, (fi * 71) % 512); g.fillRect(-512, -512, W + 1024, H + 1024); g.restore();
-  const vg = g.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 1.05);
+  const vg = VERT ? g.createRadialGradient(W / 2, H / 2, W * 0.45, W / 2, H / 2, Math.hypot(W, H) * 0.55) : g.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 1.05);
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.32)');
   g.fillStyle = vg; g.fillRect(0, 0, W, H);
 }
@@ -404,7 +491,7 @@ window.renderFrame = async (fi) => {
     endLcd(ctx, t, sh);
     if (lt < 0.2) {   // dissolve out of the last rendered LCD frame
       const o1 = FILM.shots.find((x) => x.id === 'O1'); const last = Math.round((o1.end - o1.start) * FPS);
-      const im = await img(`${ROOT}blender/renders/O1/rgb/${pad4(last)}.png`);
+      const im = await img(`${ROOT}blender/${RENDERS}/O1/rgb/${pad4(last)}.png`);
       if (im) { ctx.save(); ctx.globalAlpha = 1 - inout(seg(lt, 0, 0.2)); ctx.filter = 'saturate(1.1) contrast(1.03)'; ctx.drawImage(im, 0, 0, W, H); ctx.restore(); }
     }
     grade(ctx, fi); return true;
@@ -432,6 +519,7 @@ window.renderFrame = async (fi) => {
   if (sh.id === 'M3') drawButtonPulse(ctx, sh, lf, lt);
   if (sh.id === 'M6') drawLdrMeter(ctx, sh, lt);
   drawLabel(ctx, sh, lt);
+  if (VERT && sh.kind === 'real') drawRealStatus(ctx, t);
   drawLcdStrip(ctx, t, sh, pages);
 
   // transitions
